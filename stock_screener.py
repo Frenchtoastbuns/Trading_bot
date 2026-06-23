@@ -1,4 +1,4 @@
-# nn_screener_enhanced.py
+# stock_screener.py
 
 import os
 import math
@@ -20,9 +20,8 @@ try:
     import time
     BEAUTIFULSOUP_AVAILABLE = True
 except ImportError:
+    requests = None
     BEAUTIFULSOUP_AVAILABLE = False
-    
-from insider_fetcher import get_insider_trades
 
 # Technical Analysis
 from ta.trend import MACD, SMAIndicator, EMAIndicator, ADXIndicator
@@ -105,6 +104,38 @@ def _safe_ratio(numerator: pd.Series, denominator: pd.Series, default_value: flo
 def normalize_score_01(x: float, lo: float = -1.0, hi: float = 1.0) -> float:
     x = 0.0 if x is None or np.isnan(x) else x
     return float(np.clip((x - lo) / (hi - lo), 0.0, 1.0))
+
+def get_insider_trades(tickers: List[str], days_back: int, api_key: str) -> pd.DataFrame:
+    """Fetch recent insider trades from Financial Modeling Prep, returning an empty frame if unavailable."""
+    columns = ['ticker', 'transaction_type', 'transaction_value']
+    if not api_key or requests is None:
+        return pd.DataFrame(columns=columns)
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days_back)
+    records = []
+    for ticker in tickers:
+        try:
+            response = requests.get(
+                "https://financialmodelingprep.com/api/v4/insider-trading",
+                params={"symbol": ticker, "apikey": api_key},
+                timeout=15,
+            )
+            response.raise_for_status()
+            for item in response.json() or []:
+                filing_date = pd.to_datetime(item.get("filingDate") or item.get("transactionDate"), utc=True, errors="coerce")
+                if pd.isna(filing_date) or filing_date < cutoff:
+                    continue
+                securities = float(item.get("securitiesTransacted") or item.get("securitiesOwned") or 0)
+                price = float(item.get("price") or item.get("transactionPrice") or 0)
+                transaction_type = str(item.get("transactionType") or item.get("typeOfOwner") or "").lower()
+                records.append({
+                    "ticker": ticker,
+                    "transaction_type": "Buy" if "buy" in transaction_type or transaction_type == "p" else "Sell",
+                    "transaction_value": abs(securities * price),
+                })
+        except Exception:
+            continue
+    return pd.DataFrame(records, columns=columns)
 
 # =====================
 # Data Collection & Feature Engineering

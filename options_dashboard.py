@@ -3,7 +3,7 @@ import yfinance as yf
 from datetime import datetime
 import pandas as pd
 import matplotlib.pyplot as plt
-from black_scholes import black_scholes_and_greeks, plot_volatility_smile
+from options_pricing import black_scholes_and_greeks, plot_volatility_smile
 
 # --- Page Configuration ---
 st.set_page_config(
