@@ -1,0 +1,14 @@
+alpaca-py
+beautifulsoup4
+joblib
+matplotlib
+numpy
+openai
+pandas
+requests
+scikit-learn
+scipy
+streamlit
+ta
+torch
+yfinance
