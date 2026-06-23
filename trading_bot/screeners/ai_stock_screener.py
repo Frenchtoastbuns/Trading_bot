@@ -1,6 +1,7 @@
 import os
 import math
 import warnings
+from pathlib import Path
 from datetime import datetime, timedelta
 import numpy as np
 import pandas as pd
@@ -35,6 +36,11 @@ from ta.volatility import AverageTrueRange, BollingerBands
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
+ARTIFACT_DIR = Path(__file__).resolve().parents[2] / "artifacts" / "models"
+ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
+
+def artifact_path(filename: str) -> Path:
+    return ARTIFACT_DIR / filename
 
 # --- API Keys ---
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
@@ -260,13 +266,13 @@ def train_model(model: nn.Module, train_loader, val_loader, epochs: int, patienc
 
 def load_ensemble_models(num_models: int) -> Tuple[List[EnhancedStockNN], List[str]]:
     ensemble = []
-    checkpoint_0 = torch.load('model_0.pth', map_location=device)
+    checkpoint_0 = torch.load(artifact_path('model_0.pth'), map_location=device)
     best_features = checkpoint_0['feature_columns']
     input_size = len(best_features)
     print(f"\n--- Loading Ensemble of {num_models} Models (trained on {input_size} features) ---")
 
     for i in range(num_models):
-        model_path = f'model_{i}.pth'
+        model_path = artifact_path(f'model_{i}.pth')
         if not os.path.exists(model_path): raise FileNotFoundError(f"{model_path} not found.")
         model = EnhancedStockNN(input_size=input_size)
         checkpoint = torch.load(model_path, map_location=device)
@@ -356,10 +362,10 @@ def run_training_and_save():
         torch.save({
             'model_state_dict': model.state_dict(), 
             'feature_columns': best_features
-        }, f'model_{i}.pth')
+        }, artifact_path(f'model_{i}.pth'))
         print(f"Saved model_{i}.pth to disk.")
 
-    joblib.dump(scaler, 'feature_scaler.joblib')
+    joblib.dump(scaler, artifact_path('feature_scaler.joblib'))
     print("\nSaved feature_scaler.joblib to disk.")
 
     ensemble, _ = load_ensemble_models(NUM_MODELS)
@@ -367,11 +373,11 @@ def run_training_and_save():
 
 def backtest_strategy(start_date: str, end_date: str):
     print("\n--- Starting Backtest ---")
-    if not os.path.exists('feature_scaler.joblib') or not os.path.exists('model_0.pth'):
+    if not os.path.exists(artifact_path('feature_scaler.joblib')) or not os.path.exists(artifact_path('model_0.pth')):
         print("Model/scaler not found. Please run --mode train first.")
         return
         
-    scaler = joblib.load('feature_scaler.joblib')
+    scaler = joblib.load(artifact_path('feature_scaler.joblib'))
     ensemble_models, best_features = load_ensemble_models(NUM_MODELS)
 
     fetch_start_date = (pd.to_datetime(start_date) - pd.DateOffset(days=300)).strftime('%Y-%m-%d')
@@ -554,10 +560,10 @@ if __name__ == '__main__':
     
     elif args.mode in ['screen', 'trade']:
         # Common logic for both screen and trade modes
-        if not all(os.path.exists(f) for f in [f'model_{i}.pth' for i in range(NUM_MODELS)] + ['feature_scaler.joblib']):
+        if not all(os.path.exists(f) for f in [artifact_path(f'model_{i}.pth') for i in range(NUM_MODELS)] + [artifact_path('feature_scaler.joblib')]):
             print("Model files or scaler not found. Please run --mode train first.")
         else:
-            scaler = joblib.load('feature_scaler.joblib')
+            scaler = joblib.load(artifact_path('feature_scaler.joblib'))
             ensemble, features = load_ensemble_models(NUM_MODELS)
             
             # Get stock ideas from OpenAI

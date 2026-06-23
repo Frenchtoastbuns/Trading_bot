@@ -3,6 +3,7 @@
 import os
 import math
 import warnings
+from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
 import numpy as np
@@ -53,6 +54,11 @@ from alpaca.data.timeframe import TimeFrame
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
+ARTIFACT_DIR = Path(__file__).resolve().parents[2] / "artifacts" / "models"
+ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
+
+def artifact_path(filename: str) -> Path:
+    return ARTIFACT_DIR / filename
 
 # --- API Keys ---
 FMP_API_KEY = os.getenv("FMP_API_KEY", "")
@@ -507,18 +513,18 @@ def run_training_and_save():
     evaluate_model(model, X_test_s, y_test)
     
     model.to("cpu")
-    torch.save({'model_state_dict': model.state_dict(), 'feature_columns': feature_columns}, 'stock_trading_model.pth')
-    joblib.dump(scaler, 'feature_scaler.joblib')
+    torch.save({'model_state_dict': model.state_dict(), 'feature_columns': feature_columns}, artifact_path('stock_trading_model.pth'))
+    joblib.dump(scaler, artifact_path('feature_scaler.joblib'))
     print("\nSaved model and scaler to disk.")
 
 def auto_trade_daily():
     print("--- Starting Daily Trading ---")
-    if not all(os.path.exists(f) for f in ['stock_trading_model.pth', 'feature_scaler.joblib']):
+    if not all(os.path.exists(f) for f in [artifact_path('stock_trading_model.pth'), artifact_path('feature_scaler.joblib')]):
         print("Model or scaler not found. Please run --mode train first.")
         return
     
-    checkpoint = torch.load('stock_trading_model.pth')
-    scaler = joblib.load('feature_scaler.joblib')
+    checkpoint = torch.load(artifact_path('stock_trading_model.pth'))
+    scaler = joblib.load(artifact_path('feature_scaler.joblib'))
     feature_columns = checkpoint['feature_columns']
     
     model = EnhancedStockNN(input_size=len(feature_columns))
@@ -537,11 +543,11 @@ def auto_trade_daily():
 
 def backtest_strategy(start_date: str = "2023-01-01", end_date: str = "2024-01-01"):
     print("\n--- Starting Backtest ---")
-    if not all(os.path.exists(f) for f in ['stock_trading_model.pth', 'feature_scaler.joblib']):
+    if not all(os.path.exists(f) for f in [artifact_path('stock_trading_model.pth'), artifact_path('feature_scaler.joblib')]):
         print("Model or scaler not found. Please run --mode train first.")
         return
-    checkpoint = torch.load('stock_trading_model.pth')
-    scaler = joblib.load('feature_scaler.joblib')
+    checkpoint = torch.load(artifact_path('stock_trading_model.pth'))
+    scaler = joblib.load(artifact_path('feature_scaler.joblib'))
     feature_columns = checkpoint['feature_columns']
     model = EnhancedStockNN(input_size=len(feature_columns))
     model.load_state_dict(checkpoint['model_state_dict'])

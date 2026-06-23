@@ -2,25 +2,46 @@
 
 A Python research workspace for options pricing, neural-network stock screening, backtesting, and Alpaca paper-trading experiments.
 
-The project is organized around a few runnable scripts and the model artifacts they use. It is intended for experimentation and education, not live financial decision-making.
+This repo is organized as a small Python package with model artifacts separated from source code. It is intended for experimentation and education, not live financial decision-making.
 
-## Project Layout
+## Folder Structure
 
-| File | Purpose |
+```text
+.
+├── artifacts/
+│   └── models/
+│       ├── model_0.pth ... model_4.pth
+│       ├── feature_scaler.joblib
+│       ├── stock_trading_model.pth
+│       ├── stock_trading_model.joblib
+│       └── stock_regressor_model.pth
+├── trading_bot/
+│   ├── options/
+│   │   ├── dashboard.py
+│   │   └── pricing.py
+│   ├── screeners/
+│   │   ├── stock_screener.py
+│   │   └── ai_stock_screener.py
+│   └── training/
+│       ├── ensemble_backtester.py
+│       └── ensemble_trading_bot.py
+├── .env.example
+├── .gitignore
+├── requirements.txt
+└── README.md
+```
+
+## Main Components
+
+| Path | Purpose |
 | --- | --- |
-| `options_dashboard.py` | Streamlit dashboard for option-chain analysis, Black-Scholes pricing, Greeks, and volatility-smile charts. |
-| `options_pricing.py` | Black-Scholes pricing utilities used by the dashboard. It can also be run from the command line. |
-| `stock_screener.py` | Main enhanced stock screener with technical indicators, market-regime features, model scoring, backtesting, and Alpaca paper-trading support. |
-| `ai_stock_screener.py` | Experimental workflow that asks OpenAI for stock ideas, filters them, scores them with the ensemble, and can submit Alpaca paper trades. |
-| `ensemble_backtester.py` | Neural-network ensemble training and backtesting workflow. |
-| `ensemble_trading_bot.py` | Earlier ensemble bot workflow retained as a reference implementation. |
-| `model_0.pth` to `model_4.pth` | Saved PyTorch ensemble checkpoints. |
-| `stock_trading_model.pth` | Saved PyTorch checkpoint for the enhanced screener. |
-| `stock_regressor_model.pth` | Saved PyTorch regression checkpoint. |
-| `feature_scaler.joblib` | Saved feature scaler used before model inference. |
-| `stock_trading_model.joblib` | Saved scikit-learn model artifact. |
-| `.env.example` | Template for local environment variables. |
-| `requirements.txt` | Python dependencies. |
+| `trading_bot/options/dashboard.py` | Streamlit dashboard for option-chain analysis, Black-Scholes pricing, Greeks, and volatility-smile charts. |
+| `trading_bot/options/pricing.py` | Black-Scholes pricing utilities used by the dashboard. It can also be run from the command line. |
+| `trading_bot/screeners/stock_screener.py` | Main enhanced stock screener with technical indicators, market-regime features, model scoring, backtesting, and Alpaca paper-trading support. |
+| `trading_bot/screeners/ai_stock_screener.py` | Experimental workflow that asks OpenAI for stock ideas, filters them, scores them with the ensemble, and can submit Alpaca paper trades. |
+| `trading_bot/training/ensemble_backtester.py` | Neural-network ensemble training and backtesting workflow. |
+| `trading_bot/training/ensemble_trading_bot.py` | Earlier ensemble bot workflow retained as a reference implementation. |
+| `artifacts/models/` | Saved model checkpoints and scalers used by the scripts. |
 
 ## Setup
 
@@ -40,8 +61,8 @@ Expected environment variables:
 
 | Variable | Used for |
 | --- | --- |
-| `OPENAI_API_KEY` | OpenAI-assisted ticker idea generation in `ai_stock_screener.py`. |
-| `FMP_API_KEY` | Insider-trading data in `stock_screener.py`. |
+| `OPENAI_API_KEY` | OpenAI-assisted ticker idea generation. |
+| `FMP_API_KEY` | Insider-trading data in the enhanced screener. |
 | `ALPACA_API_KEY` | Alpaca paper-trading access. |
 | `ALPACA_SECRET_KEY` | Alpaca paper-trading access. |
 | `ALPACA_BASE_URL` | Alpaca API base URL. Defaults to paper trading. |
@@ -51,32 +72,33 @@ Expected environment variables:
 Run the options dashboard:
 
 ```powershell
-streamlit run options_dashboard.py
+streamlit run trading_bot/options/dashboard.py
+```
+
+Run the options pricing CLI:
+
+```powershell
+python -m trading_bot.options.pricing
 ```
 
 Train or backtest the ensemble model:
 
 ```powershell
-python ensemble_backtester.py --mode train
-python ensemble_backtester.py --mode backtest
+python -m trading_bot.training.ensemble_backtester --mode train
+python -m trading_bot.training.ensemble_backtester --mode backtest
 ```
 
 Run the enhanced screener:
 
 ```powershell
-python stock_screener.py --mode screen
-```
-
-Run a backtest with the enhanced screener:
-
-```powershell
-python stock_screener.py --mode backtest
+python -m trading_bot.screeners.stock_screener --mode screen
+python -m trading_bot.screeners.stock_screener --mode backtest
 ```
 
 Run the OpenAI-assisted screener:
 
 ```powershell
-python ai_stock_screener.py --mode screen
+python -m trading_bot.screeners.ai_stock_screener --mode screen
 ```
 
 ## Security

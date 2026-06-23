@@ -1,6 +1,5 @@
 import os
-import math
-import warnings
+from pathlib import Path
 from datetime import datetime, timedelta
 import numpy as np
 import pandas as pd
@@ -17,37 +16,30 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
-# Alpaca API
-from alpaca.trading.client import TradingClient
-from alpaca.trading.requests import MarketOrderRequest
-from alpaca.trading.enums import OrderSide, TimeInForce
 
 # Technical Analysis
 from ta.trend import MACD, SMAIndicator, EMAIndicator, ADXIndicator
 from ta.momentum import RSIIndicator
 from ta.volatility import AverageTrueRange, BollingerBands
 
-# =====================
-# Configuration
-# =====================
 
+# Configuration
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
+ARTIFACT_DIR = Path(__file__).resolve().parents[2] / "artifacts" / "models"
+ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
 
-# --- API KEYS (Replace with your own) ---
-FMP_API_KEY = os.getenv("FMP_API_KEY", "")
-ALPACA_API_KEY = os.getenv("ALPACA_API_KEY", "")
-ALPACA_SECRET_KEY = os.getenv("ALPACA_SECRET_KEY", "")
-ALPACA_BASE_URL = os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.markets/v2")
+def artifact_path(filename: str) -> Path:
+    return ARTIFACT_DIR / filename
 
-# --- Model & Data Config ---
+# --- Model  ---
 LOOKBACK_PERIOD = "2y"
 FORWARD_DAYS = 20
-TARGET_RETURN = 0.0 # Any positive return is a win
+TARGET_RETURN = 0.0 
 NUM_MODELS = 5
-NUM_FEATURES_TO_SELECT = 15 # Select the top 15 features
+NUM_FEATURES_TO_SELECT = 15 
 
-# --- Stock Universe & Filters ---
+# --- Filters ---
 PRICE_MIN = 2.0
 PRICE_MAX = 100.0
 MIN_MARKET_CAP = 200_000_000
@@ -61,20 +53,15 @@ STOCK_UNIVERSE = [
     'SPY', 'QQQ', 'IWM'
 ]
 
-# --- Neural Network Config ---
+# --- Neural Network Metrics ---
 BATCH_SIZE = 64
 LEARNING_RATE = 0.0005
 EPOCHS = 100
 PATIENCE = 15
-
-# --- Trading Config ---
 MAX_POSITION_SIZE = 1
 MIN_CONFIDENCE = 0.55
 
-# =====================
-# Data Collection & Feature Engineering
-# =====================
-
+# Data Collection & Features Config
 def get_stock_data(symbol: str, period: str = None, start: str = None, end: str = None) -> Optional[pd.DataFrame]:
     try:
         t = yf.Ticker(symbol)
@@ -121,7 +108,7 @@ def collect_data(period: str = None, start: str = None, end: str = None) -> pd.D
         df = calculate_technical_indicators(df)
         df = calculate_forward_returns(df)
         rows.append(df)
-    if not rows: raise ValueError("No valid data collected.")
+    if not rows: raise ValueError("No data collected.")
     data = pd.concat(rows, axis=0)
     return data.replace([np.inf, -np.inf], np.nan).dropna()
 
@@ -153,9 +140,7 @@ def select_best_features(X_train: pd.DataFrame, y_train: pd.Series, original_col
     best_features = feature_importance_df['feature'].head(NUM_FEATURES_TO_SELECT).tolist()
     return best_features
 
-# =====================
 # Model Definition, Training & Evaluation
-# =====================
 
 class EnhancedStockNN(nn.Module):
     def __init__(self, input_size: int, hidden_sizes=None, dropout_rate: float = 0.4):
@@ -219,13 +204,13 @@ def train_model(model: nn.Module, train_loader, val_loader, epochs: int, patienc
 
 def load_ensemble_models(num_models: int) -> Tuple[List[EnhancedStockNN], List[str]]:
     ensemble = []
-    checkpoint_0 = torch.load('model_0.pth', map_location=device)
+    checkpoint_0 = torch.load(artifact_path('model_0.pth'), map_location=device)
     best_features = checkpoint_0['feature_columns']
     input_size = len(best_features)
     print(f"\n--- Loading Ensemble of {num_models} Models (trained on {input_size} features) ---")
 
     for i in range(num_models):
-        model_path = f'model_{i}.pth'
+        model_path = artifact_path(f'model_{i}.pth')
         if not os.path.exists(model_path): raise FileNotFoundError(f"{model_path} not found.")
         model = EnhancedStockNN(input_size=input_size)
         checkpoint = torch.load(model_path, map_location=device)
@@ -247,7 +232,7 @@ def predict_with_ensemble(ensemble_models: List[EnhancedStockNN], scaler, row: p
             logits = model(xt)
             prob = torch.sigmoid(logits).item()
             all_probs.append(prob)
-    return np.mean(all_probs)
+    return np.mean(all_probs) 
 
 def evaluate_ensemble(ensemble_models: List[EnhancedStockNN], X_test_s: np.ndarray, y_test: np.ndarray):
     all_probs = []
@@ -268,9 +253,7 @@ def evaluate_ensemble(ensemble_models: List[EnhancedStockNN], X_test_s: np.ndarr
         print("ROC AUC could not be calculated.")
     print("Classification Report:\n", classification_report(y_true, preds, digits=4, zero_division=0))
 
-# =====================
-# Main Execution Logic
-# =====================
+# Training Pipeline
 
 def run_training_and_save():
     print("--- Starting Training Pipeline ---")
@@ -315,23 +298,23 @@ def run_training_and_save():
         torch.save({
             'model_state_dict': model.state_dict(), 
             'feature_columns': best_features
-        }, f'model_{i}.pth')
+        }, artifact_path(f'model_{i}.pth'))
         print(f"Saved model_{i}.pth to disk.")
 
-    joblib.dump(scaler, 'feature_scaler.joblib')
+    joblib.dump(scaler, artifact_path('feature_scaler.joblib'))
     print("\nSaved feature_scaler.joblib to disk.")
 
     ensemble, _ = load_ensemble_models(NUM_MODELS)
     evaluate_ensemble(ensemble, X_test_s, y_test.values)
 
-## FULLY IMPLEMENTED BACKTESTER
+## BACKTESTER
 def backtest_strategy(start_date: str, end_date: str):
     print("\n--- Starting Backtest ---")
-    if not os.path.exists('feature_scaler.joblib') or not os.path.exists('model_0.pth'):
+    if not os.path.exists(artifact_path('feature_scaler.joblib')) or not os.path.exists(artifact_path('model_0.pth')):
         print("Model/scaler not found. Please run --mode train first.")
         return
         
-    scaler = joblib.load('feature_scaler.joblib')
+    scaler = joblib.load(artifact_path('feature_scaler.joblib'))
     ensemble_models, best_features = load_ensemble_models(NUM_MODELS)
 
     fetch_start_date = (pd.to_datetime(start_date) - pd.DateOffset(days=300)).strftime('%Y-%m-%d')
@@ -418,14 +401,15 @@ def backtest_strategy(start_date: str, end_date: str):
 
 if __name__ == '__main__':
     import argparse
-    parser = argparse.ArgumentParser(description='AI Stock Screener with Feature Selection')
+    parser = argparse.ArgumentParser(description='Neural Network Stock Trading Bot')
     parser.add_argument('--mode', choices=['train', 'backtest'], default='train', help='Operation mode')
     args = parser.parse_args()
-
-    if not FMP_API_KEY or not ALPACA_API_KEY or not ALPACA_SECRET_KEY:
-        warnings.warn("API keys are not set. Configure FMP_API_KEY, ALPACA_API_KEY, and ALPACA_SECRET_KEY in your environment.")
 
     if args.mode == 'train':
         run_training_and_save()
     elif args.mode == 'backtest':
         backtest_strategy(start_date="2024-01-01", end_date="2025-07-31")
+
+
+
+        
